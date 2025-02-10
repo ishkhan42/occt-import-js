@@ -2,20 +2,37 @@
 <html>
 
 <head>
-    
+
     <meta http-equiv="content-type" content="text/html;charset=utf-8">
     <meta name="viewport" content="width=device-width, user-scalable=no">
 
     <title>OcctImportJS Demo</title>
 
     <script src="https://cdn.jsdelivr.net/npm/three@0.138.3/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.138.3/examples/js/loaders/GLTFLoader.js"></script>
     <script type="text/javascript" src="../dist/occt-import-js.js"></script>
-    
+
     <style>
-        html, body
-        {
+        html,
+        body {
             margin: 0px;
-            padding : 0px;
+            padding: 0px;
+        }
+
+        #download-panel {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: rgba(255, 255, 255, 0.8);
+            padding: 10px;
+            border-radius: 5px;
+        }
+
+        button {
+            display: block;
+            margin: 5px;
+            padding: 5px 10px;
+            cursor: pointer;
         }
     </style>
 
@@ -23,141 +40,206 @@
 
 <body>
 
-<script type='text/javascript'>
+    <div id="download-panel">
+        <button onclick="downloadGLTF()">Download GLTF</button>
+        <button onclick="downloadBin()">Download Binary</button>
+    </div>
 
-    async function LoadGeometry (targetObject)
-    {
-        // init occt-import-js
-        const occt = await occtimportjs ();
-        
-        // download a step file
-        let fileUrl = '../test/testfiles/cax-if/as1_pe_203.stp';
-        let response = await fetch (fileUrl);
-        let buffer = await response.arrayBuffer ();
-        
-        // read the imported step file
-        let fileBuffer = new Uint8Array (buffer);
-        let result = occt.ReadStepFile (fileBuffer, null);
-        
-        // process the geometries of the result
-        const group = new THREE.Group();
-        for (let resultMesh of result.meshes) {
-            const { mesh, edges } = BuildMesh(resultMesh, true);
-            group.add(mesh);
-            if (edges) {
-                group.add(edges);
+    <script type='text/javascript'>
+
+        let gltfContent, binContent;
+
+        function downloadFile(content, filename) {
+            const blob = new Blob([content], { type: 'application/octet-stream' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function downloadGLTF() {
+            if (gltfContent) {
+                downloadFile(gltfContent, 'sim.gltf');
             }
         }
-        targetObject.add(group);
-    }
 
-    async function Load ()
-    {
-        const width = window.innerWidth;
-        const height = window.innerHeight;
-
-        const renderer = new THREE.WebGLRenderer ({ antialias: true });
-        renderer.setSize (width, height);
-        renderer.setClearColor (0xfafafa);
-        document.body.appendChild (renderer.domElement);
-
-        const camera = new THREE.PerspectiveCamera (45, width / height, 1.0, 100000.0);
-        camera.position.set (5000.0, 15000.0, 10000.0);
-        camera.up.set (0.0, 0.0, 1.0);
-        camera.lookAt (new THREE.Vector3 (0.0, 0.0, 0.0));
-
-        const scene = new THREE.Scene ();
-        
-        const ambientLight = new THREE.AmbientLight (0x444444);
-        scene.add (ambientLight);
-        
-        const directionalLight = new THREE.DirectionalLight (0x888888);
-        directionalLight.position.set (camera.position.x, camera.position.y, camera.position.z);
-        scene.add (directionalLight);
-
-        const mainObject = new THREE.Object3D ();
-        LoadGeometry (mainObject);
-        scene.add (mainObject);
-
-        renderer.setAnimationLoop ((time) => {
-            mainObject.rotation.x = time / 2000;
-            mainObject.rotation.y = time / 1000;
-            renderer.render (scene, camera);
-        });
-    }
-
-    function BuildMesh (geometryMesh, showEdges)
-    {
-        let geometry = new THREE.BufferGeometry();
-
-        geometry.setAttribute("position", new THREE.Float32BufferAttribute(geometryMesh.attributes.position.array, 3));
-        if (geometryMesh.attributes.normal) {
-            geometry.setAttribute("normal", new THREE.Float32BufferAttribute(geometryMesh.attributes.normal.array, 3));
-        }
-        geometry.name = geometryMesh.name;
-        const index = Uint32Array.from(geometryMesh.index.array);
-        geometry.setIndex(new THREE.BufferAttribute(index, 1));
-
-        const outlineMaterial = new THREE.LineBasicMaterial({ color: 0x000000 });
-        const defaultMaterial = new THREE.MeshPhongMaterial({
-            color: geometryMesh.color ? new THREE.Color(geometryMesh.color[0], geometryMesh.color[1], geometryMesh.color[2]) : 0xcccccc,
-            specular: 0,
-        });
-        let materials = [defaultMaterial];
-        const edges = showEdges ? new THREE.Group() : null;
-        if (geometryMesh.brep_faces && geometryMesh.brep_faces.length > 0) {
-            for (let faceColor of geometryMesh.brep_faces) {
-                const color = faceColor.color ? new THREE.Color(faceColor.color[0], faceColor.color[1], faceColor.color[2]) : defaultMaterial.color;
-                materials.push(new THREE.MeshPhongMaterial({ color: color, specular: 0 }));
+        function downloadBin() {
+            if (binContent) {
+                downloadFile(binContent, 'sim.bin');
             }
-            const triangleCount = geometryMesh.index.array.length / 3;
-            let triangleIndex = 0;
-            let faceColorGroupIndex = 0;
-            while (triangleIndex < triangleCount) {
-                const firstIndex = triangleIndex;
-                let lastIndex = null;
-                let materialIndex = null;
-                if (faceColorGroupIndex >= geometryMesh.brep_faces.length) {
-                    lastIndex = triangleCount;
-                    materialIndex = 0;
-                } else if (triangleIndex < geometryMesh.brep_faces[faceColorGroupIndex].first) {
-                    lastIndex = geometryMesh.brep_faces[faceColorGroupIndex].first;
-                    materialIndex = 0;
-                } else {
-                    lastIndex = geometryMesh.brep_faces[faceColorGroupIndex].last + 1;
-                    materialIndex = faceColorGroupIndex + 1;
-                    faceColorGroupIndex++;
+        }
+
+        async function LoadGeometry(targetObject) {
+            // init occt-import-js
+            console.log('Loading OCCT...');
+            const occt = await occtimportjs();
+            console.log(occt);
+            // download a step file
+            let fileUrl = './Cover_SIM_08-DS-CG-MB-V1.0.0.step';
+            let response = await fetch(fileUrl);
+            let buffer = await response.arrayBuffer();
+            console.log('Step file fetched');
+
+            // read the imported step file
+            let fileBuffer = new Uint8Array(buffer);
+            let result = occt.ReadStepFileGLTF(fileBuffer, "sim", {
+                "linearUnit": "millimeter",
+                "linearDeflectionType": "bounding_box_ratio",
+                "linearDeflection": 0.01,
+                "angularDeflection": 0.5,
+            });
+            if (!result.success) {
+                console.error('Failed to read the step file', result);
+                return;
+            }
+            const gltfFile = result.gla;
+            const binFile = result.glb;
+            console.log('Step file read', result, gltfFile, binFile);
+
+            // 
+
+            // Read the generated GLTF and BIN files
+            gltfContent = occt.FS.readFile(gltfFile);
+            console.log('GLTF content', gltfContent);
+            // binContent = occt.FS.readFile(binFile);
+            // console.log('BIN content', binContent);
+
+            // Create Blobs for both files
+            const gltfBlob = new Blob([gltfContent], { type: 'application/octet-stream' });
+            // const binBlob = new Blob([binContent], { type: 'application/octet-stream' });
+
+            // Create URLs for the Blobs
+            const gltfUrl = URL.createObjectURL(gltfBlob);
+            const binUrl = URL.createObjectURL(binBlob);
+
+            // Replace the binary URI in the GLTF JSON
+            const gltfJson = JSON.parse(new TextDecoder().decode(gltfContent));
+            gltfJson.buffers[0].uri = binUrl;
+            const modifiedGltfBlob = new Blob([JSON.stringify(gltfJson)], { type: 'application/json' });
+            const modifiedGltfUrl = URL.createObjectURL(modifiedGltfBlob);
+
+            // Load the GLTF into Three.js
+            const loader = new THREE.GLTFLoader();
+            loader.load(modifiedGltfUrl, (gltf) => {
+                targetObject.add(gltf.scene);
+                console.log('GLTF loaded successfully');
+
+                // Clean up the URLs
+                URL.revokeObjectURL(gltfUrl);
+                URL.revokeObjectURL(binUrl);
+                URL.revokeObjectURL(modifiedGltfUrl);
+            });
+        }
+
+        async function Load() {
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+
+            const renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(width, height);
+            renderer.setClearColor(0xfafafa);
+            document.body.appendChild(renderer.domElement);
+
+            const camera = new THREE.PerspectiveCamera(45, width / height, 1.0, 1000.0);
+            camera.position.set(100.0, 100.0, 150.0);
+            camera.up.set(0.0, 0.0, 1.0);
+            camera.lookAt(new THREE.Vector3(25.0, 25.0, 25.0));
+
+            const scene = new THREE.Scene();
+
+            const ambientLight = new THREE.AmbientLight(0x666666);
+            scene.add(ambientLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xaaaaaa);
+            directionalLight.position.set(camera.position.x, camera.position.y, camera.position.z);
+            scene.add(directionalLight);
+
+            const mainObject = new THREE.Object3D();
+            LoadGeometry(mainObject);
+            scene.add(mainObject);
+
+            renderer.setAnimationLoop((time) => {
+                mainObject.rotation.x = time / 2000;
+                // mainObject.rotation.y = time / 1000;
+                renderer.render(scene, camera);
+            });
+        }
+
+        function BuildMesh(geometryMesh, showEdges) {
+            let geometry = new THREE.BufferGeometry();
+
+            geometry.setAttribute("position", new THREE.Float32BufferAttribute(geometryMesh.attributes.position.array, 3));
+            if (geometryMesh.attributes.normal) {
+                geometry.setAttribute("normal", new THREE.Float32BufferAttribute(geometryMesh.attributes.normal.array, 3));
+            }
+            geometry.name = geometryMesh.name;
+            const index = Uint32Array.from(geometryMesh.index.array);
+            geometry.setIndex(new THREE.BufferAttribute(index, 1));
+
+            const outlineMaterial = new THREE.LineBasicMaterial({ color: 0x000000 });
+            const defaultMaterial = new THREE.MeshPhongMaterial({
+                color: geometryMesh.color ? new THREE.Color(geometryMesh.color[0], geometryMesh.color[1], geometryMesh.color[2]) : 0xcccccc,
+                specular: 0,
+            });
+            let materials = [defaultMaterial];
+            const edges = showEdges ? new THREE.Group() : null;
+            if (geometryMesh.brep_faces && geometryMesh.brep_faces.length > 0) {
+                for (let faceColor of geometryMesh.brep_faces) {
+                    const color = faceColor.color ? new THREE.Color(faceColor.color[0], faceColor.color[1], faceColor.color[2]) : defaultMaterial.color;
+                    materials.push(new THREE.MeshPhongMaterial({ color: color, specular: 0 }));
                 }
-                geometry.addGroup(firstIndex * 3, (lastIndex - firstIndex) * 3, materialIndex);
-                triangleIndex = lastIndex;
-
-                if (edges) {
-                    const innerGeometry = new THREE.BufferGeometry();
-                    innerGeometry.setAttribute("position", geometry.attributes.position);
-                    if (geometryMesh.attributes.normal) {
-                        innerGeometry.setAttribute("normal", geometry.attributes.normal);
+                const triangleCount = geometryMesh.index.array.length / 3;
+                let triangleIndex = 0;
+                let faceColorGroupIndex = 0;
+                while (triangleIndex < triangleCount) {
+                    const firstIndex = triangleIndex;
+                    let lastIndex = null;
+                    let materialIndex = null;
+                    if (faceColorGroupIndex >= geometryMesh.brep_faces.length) {
+                        lastIndex = triangleCount;
+                        materialIndex = 0;
+                    } else if (triangleIndex < geometryMesh.brep_faces[faceColorGroupIndex].first) {
+                        lastIndex = geometryMesh.brep_faces[faceColorGroupIndex].first;
+                        materialIndex = 0;
+                    } else {
+                        lastIndex = geometryMesh.brep_faces[faceColorGroupIndex].last + 1;
+                        materialIndex = faceColorGroupIndex + 1;
+                        faceColorGroupIndex++;
                     }
-                    innerGeometry.setIndex(new THREE.BufferAttribute(index.slice(firstIndex * 3, lastIndex * 3), 1));
-                    const innerEdgesGeometry = new THREE.EdgesGeometry(innerGeometry, 180);
-                    const edge = new THREE.LineSegments(innerEdgesGeometry, outlineMaterial);
-                    edges.add(edge);
+                    geometry.addGroup(firstIndex * 3, (lastIndex - firstIndex) * 3, materialIndex);
+                    triangleIndex = lastIndex;
+
+                    if (edges) {
+                        const innerGeometry = new THREE.BufferGeometry();
+                        innerGeometry.setAttribute("position", geometry.attributes.position);
+                        if (geometryMesh.attributes.normal) {
+                            innerGeometry.setAttribute("normal", geometry.attributes.normal);
+                        }
+                        innerGeometry.setIndex(new THREE.BufferAttribute(index.slice(firstIndex * 3, lastIndex * 3), 1));
+                        const innerEdgesGeometry = new THREE.EdgesGeometry(innerGeometry, 180);
+                        const edge = new THREE.LineSegments(innerEdgesGeometry, outlineMaterial);
+                        edges.add(edge);
+                    }
                 }
             }
+
+            const mesh = new THREE.Mesh(geometry, materials.length > 1 ? materials : materials[0]);
+            mesh.name = geometryMesh.name;
+
+            if (edges) {
+                edges.renderOrder = mesh.renderOrder + 1;
+            }
+
+            return { mesh, geometry, edges };
         }
 
-        const mesh = new THREE.Mesh(geometry, materials.length > 1 ? materials : materials[0]);
-        mesh.name = geometryMesh.name;
+        Load();
 
-        if (edges) {
-            edges.renderOrder = mesh.renderOrder + 1;
-        }
-
-        return { mesh, geometry, edges };
-    }
-
-    Load ();
-
-</script>
+    </script>
 
 </body>
 

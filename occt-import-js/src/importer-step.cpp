@@ -15,6 +15,9 @@ bool ImporterStep::TransferToDocument (const std::vector<std::uint8_t>& fileCont
     STEPCAFControl_Reader stepCafReader;
     stepCafReader.SetColorMode (true);
     stepCafReader.SetNameMode (true);
+    stepCafReader.SetGDTMode (true);
+    stepCafReader.SetLayerMode (true);
+    stepCafReader.SetMatMode (true);
 
     STEPControl_Reader& stepReader = stepCafReader.ChangeReader ();
     std::string dummyFileName = "stp";

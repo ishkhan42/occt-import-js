@@ -295,6 +295,8 @@ AddOcctModule (XCAFPrs)
 AddOcctModule (XCAFView)
 AddOcctModule (XSAlgo)
 AddOcctModule (XSControl)
+AddOcctModule (RWGltf)
+AddOcctModule (RWMesh)
 
 file (GLOB OcctSourceFiles ${OcctSourceFolders})
 
@@ -312,9 +314,11 @@ if (${EMSCRIPTEN})
 	target_compile_options (OcctImportJS PUBLIC "$<$<CONFIG:Debug>:-gsource-map>")
 	target_compile_options (OcctImportJS PUBLIC "$<$<CONFIG:Release>:-Oz>")
 	target_compile_options (OcctImportJS PUBLIC -fexceptions)
-	target_compile_options (OcctImportJS PUBLIC -fwasm-exceptions)
+	target_compile_options (OcctImportJS PUBLIC -fwasm-exceptions -flto -frtti)
+	target_compile_definitions(OcctImportJS PUBLIC -DHAVE_RAPIDJSON -DIGNORE_NO_ATOMICS=1 -DOCCT_NO_PLUGINS)
 
 	target_link_options (OcctImportJS PUBLIC -sMODULARIZE=1)
+	target_link_options (OcctImportJS PUBLIC -sEXPORTED_RUNTIME_METHODS=['FS'])
 	target_link_options (OcctImportJS PUBLIC -sEXPORT_NAME='occtimportjs')
 	target_link_options (OcctImportJS PUBLIC -sSTACK_SIZE=10MB)
 	target_link_options (OcctImportJS PUBLIC -sALLOW_MEMORY_GROWTH=1 --no-heap-copy)
@@ -333,7 +337,7 @@ target_include_directories (OcctImportJS PUBLIC	${OcctIncludeDirs})
 set_target_properties(OcctImportJS PROPERTIES OUTPUT_NAME occt-import-js)
 set_target_properties (OcctImportJS PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/${CMAKE_BUILD_TYPE}")
 
-
+ target_include_directories(OcctImportJS PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/rapidjson/include)
 # OcctImportJSExample
 
 if (${EMSCRIPTEN})

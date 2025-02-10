@@ -4,7 +4,12 @@
 #include "importer-step.hpp"
 #include "importer-iges.hpp"
 #include "importer-brep.hpp"
+#include <RWGltf_CafWriter.hxx>
+#include <Message_ProgressRange.hxx>
+#include <TCollection_AsciiString.hxx>
+#include <NCollection_IndexedDataMap.hxx>
 #include <emscripten/bind.h>
+#include "gltf-exporter.hpp"
 
 class HierarchyWriter
 {
@@ -12,8 +17,7 @@ public:
     HierarchyWriter (emscripten::val& meshesArr) :
         mMeshesArr (meshesArr),
         mMeshCount (0)
-    {
-    }
+    {}
 
     void WriteNode (const NodePtr& node, emscripten::val& nodeObj)
     {
@@ -222,6 +226,53 @@ emscripten::val ReadStepFile (const emscripten::val& buffer, const emscripten::v
     return ImportFile (importer, buffer, importParams);
 }
 
+
+emscripten::val ReadStepFileGLTF (const emscripten::val& buffer, const emscripten::val& output_name, const emscripten::val& params)
+{
+    ImporterPtr importer = std::make_shared<ImporterStep> ();
+    ImportParams importParams = GetImportParams (params);
+    emscripten::val resultObj (emscripten::val::object ());
+    std::string outputName = output_name.as<std::string> () + ".gltf";
+    std::string outputNameBin = output_name.as<std::string> () + ".bin";
+
+    const std::vector<uint8_t>& bufferArr = emscripten::vecFromJSArray<std::uint8_t> (buffer);
+    Importer::Result importResult = importer->LoadFile (bufferArr, importParams);
+    resultObj.set ("success", importResult == Importer::Result::Success);
+
+    if (importResult != Importer::Result::Success) {
+        return resultObj;
+    }
+
+    int meshIndex = 0;
+    emscripten::val rootNodeObj (emscripten::val::object ());
+    emscripten::val meshesArr (emscripten::val::array ());
+    NodePtr rootNode = importer->GetRootNode ();
+
+    HierarchyWriter hierarchyWriter (meshesArr);
+    hierarchyWriter.WriteNode (rootNode, rootNodeObj);
+
+
+    // Cast importer to ImporterStep to access document
+    auto importerStep = std::dynamic_pointer_cast<ImporterStep>(importer);
+    if (!importerStep) {
+        resultObj.set ("success", false);
+        return resultObj;
+    }
+
+    // Export to GLTF
+    GltfExporter exporter (outputName, true);
+    bool exportSuccess = exporter.Export (importerStep->GetDocument ());
+
+    resultObj.set ("success", exportSuccess);
+    if (exportSuccess) {
+        resultObj.set ("gla", outputName);
+        resultObj.set ("glb", outputNameBin);
+    }
+
+    return resultObj;
+}
+
+
 emscripten::val ReadIgesFile (const emscripten::val& buffer, const emscripten::val& params)
 {
     ImporterPtr importer = std::make_shared<ImporterIges> ();
@@ -256,6 +307,7 @@ EMSCRIPTEN_BINDINGS (occtimportjs)
     emscripten::function<emscripten::val, const std::string&, const emscripten::val&, const emscripten::val&> ("ReadFile", &ReadFile);
 
     emscripten::function<emscripten::val, const emscripten::val&, const emscripten::val&> ("ReadStepFile", &ReadStepFile);
+    emscripten::function<emscripten::val, const emscripten::val&, const emscripten::val&> ("ReadStepFileGLTF", &ReadStepFileGLTF);
     emscripten::function<emscripten::val, const emscripten::val&, const emscripten::val&> ("ReadIgesFile", &ReadIgesFile);
     emscripten::function<emscripten::val, const emscripten::val&, const emscripten::val&> ("ReadBrepFile", &ReadBrepFile);
 }
