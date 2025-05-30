@@ -8,6 +8,25 @@ add_definitions (-DUNICODE -D_UNICODE)
 project (OcctImportJS)
 set (CMAKE_CXX_STANDARD 11)
 
+# Include OCCT version configuration
+include (${CMAKE_SOURCE_DIR}/occt/adm/cmake/version.cmake)
+
+# Set up variables for Standard_Version.hxx generation
+if (NOT DEFINED OCC_VERSION_DEVELOPMENT OR "${OCC_VERSION_DEVELOPMENT}" STREQUAL "")
+  set (SET_OCC_VERSION_DEVELOPMENT "#define OCC_VERSION_DEVELOPMENT \"\"")
+else()
+  set (SET_OCC_VERSION_DEVELOPMENT "#define OCC_VERSION_DEVELOPMENT \"${OCC_VERSION_DEVELOPMENT}\"")
+endif()
+
+string(TIMESTAMP OCCT_VERSION_DATE "%Y-%m-%d" UTC)
+
+# Generate Standard_Version.hxx from template
+configure_file(
+  "${CMAKE_SOURCE_DIR}/occt/adm/templates/Standard_Version.hxx.in"
+  "${CMAKE_BINARY_DIR}/include/Standard_Version.hxx"
+  @ONLY
+)
+
 # OcctImportJS
 
 set (OcctSourceFolders)
@@ -87,6 +106,8 @@ AddOcctModule (Convert)
 AddOcctModule (CPnts)
 AddOcctModule (CSLib)
 AddOcctModule (DE)
+AddOcctModule (DESTEP)
+AddOcctModule (DEIGES)
 AddOcctModule (DsgPrs)
 AddOcctModule (ElCLib)
 AddOcctModule (ElSLib)
@@ -334,10 +355,11 @@ endif ()
 
 target_compile_options (OcctImportJS PUBLIC -DOCCT_NO_PLUGINS)
 target_include_directories (OcctImportJS PUBLIC	${OcctIncludeDirs})
+target_include_directories (OcctImportJS PUBLIC "${CMAKE_BINARY_DIR}/include")
 set_target_properties(OcctImportJS PROPERTIES OUTPUT_NAME occt-import-js)
 set_target_properties (OcctImportJS PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/${CMAKE_BUILD_TYPE}")
 
- target_include_directories(OcctImportJS PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/rapidjson/include)
+target_include_directories(OcctImportJS PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/rapidjson/include)
 # OcctImportJSExample
 
 if (${EMSCRIPTEN})

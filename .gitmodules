@@ -1,6 +1,6 @@
 [submodule "occt"]
 	path = occt
-	url = https://git.dev.opencascade.org/repos/occt.git
+	url = https://github.com/Open-Cascade-SAS/OCCT
 [submodule "rapidjson"]
 	path = rapidjson
 	url = https://github.com/Tencent/rapidjson.git
