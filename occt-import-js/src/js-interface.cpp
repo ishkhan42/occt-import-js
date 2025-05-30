@@ -10,6 +10,8 @@
 #include <NCollection_IndexedDataMap.hxx>
 #include <emscripten/bind.h>
 #include "gltf-exporter.hpp"
+#include <chrono> // Added for timing
+#include <iostream> // Added for logging
 
 class HierarchyWriter
 {
@@ -226,42 +228,92 @@ emscripten::val ReadStepFile (const emscripten::val& buffer, const emscripten::v
     return ImportFile (importer, buffer, importParams);
 }
 
-
 emscripten::val ReadStepFileGLTF (const emscripten::val& buffer, const emscripten::val& output_name, const emscripten::val& params)
 {
+    auto func_total_start_time = std::chrono::high_resolution_clock::now ();
+    std::cout << "[ReadStepFileGLTF] Execution started." << std::endl;
+
     ImporterPtr importer = std::make_shared<ImporterStep> ();
+
+    auto get_params_start_time = std::chrono::high_resolution_clock::now ();
     ImportParams importParams = GetImportParams (params);
+    auto get_params_end_time = std::chrono::high_resolution_clock::now ();
+    std::cout << "[ReadStepFileGLTF] GetImportParams took: "
+        << std::chrono::duration_cast<std::chrono::milliseconds>(get_params_end_time - get_params_start_time).count ()
+        << "ms" << std::endl;
+
     emscripten::val resultObj (emscripten::val::object ());
     std::string outputName = output_name.as<std::string> () + ".gltf";
     std::string outputNameBin = output_name.as<std::string> () + ".bin";
 
     const std::vector<uint8_t>& bufferArr = emscripten::vecFromJSArray<std::uint8_t> (buffer);
+
+    auto load_file_start_time = std::chrono::high_resolution_clock::now ();
     Importer::Result importResult = importer->LoadFile (bufferArr, importParams);
+    auto load_file_end_time = std::chrono::high_resolution_clock::now ();
+    std::cout << "[ReadStepFileGLTF] importer->LoadFile took: "
+        << std::chrono::duration_cast<std::chrono::milliseconds>(load_file_end_time - load_file_start_time).count ()
+        << "ms" << std::endl;
+
     resultObj.set ("success", importResult == Importer::Result::Success);
 
     if (importResult != Importer::Result::Success) {
+        std::cout << "[ReadStepFileGLTF] Import failed." << std::endl;
+        auto func_total_end_time_failure = std::chrono::high_resolution_clock::now ();
+        std::cout << "[ReadStepFileGLTF] Total execution time (failure): "
+            << std::chrono::duration_cast<std::chrono::milliseconds>(func_total_end_time_failure - func_total_start_time).count ()
+            << "ms" << std::endl;
         return resultObj;
     }
 
-    int meshIndex = 0;
-    emscripten::val rootNodeObj (emscripten::val::object ());
-    emscripten::val meshesArr (emscripten::val::array ());
     NodePtr rootNode = importer->GetRootNode ();
 
-    HierarchyWriter hierarchyWriter (meshesArr);
-    hierarchyWriter.WriteNode (rootNode, rootNodeObj);
-
+    // Perform traversal to ensure triangulation without emscripten::val overhead
+    auto processing_start_time = std::chrono::high_resolution_clock::now ();
+    EnumerateNodeMeshes (rootNode, [](const Mesh& mesh) {
+        // Enumerate mesh components to ensure OCCT processes them for triangulation.
+        // The act of enumeration itself is what triggers the necessary internal
+        // processing in OCCT if triangulation hasn't occurred yet.
+        mesh.EnumerateFaces ([](const Face& face) {
+            // Iterate through vertices, normals, and triangles.
+            // The lambda bodies are empty because we only need to trigger the enumeration.
+            // (void) casts suppress unused variable warnings.
+            face.EnumerateVertices ([](double x, double y, double z) { (void) x; (void) y; (void) z; });
+            face.EnumerateNormals ([](double x, double y, double z) { (void) x; (void) y; (void) z; });
+            face.EnumerateTriangles ([](int v0, int v1, int v2) { (void) v0; (void) v1; (void) v2; });
+        });
+    });
+    auto processing_end_time = std::chrono::high_resolution_clock::now ();
+    std::cout << "[ReadStepFileGLTF] Triangulation processing (EnumerateNodeMeshes) took: "
+        << std::chrono::duration_cast<std::chrono::milliseconds>(processing_end_time - processing_start_time).count ()
+        << "ms" << std::endl;
 
     // Cast importer to ImporterStep to access document
+    auto cast_start_time = std::chrono::high_resolution_clock::now ();
     auto importerStep = std::dynamic_pointer_cast<ImporterStep>(importer);
+    auto cast_end_time = std::chrono::high_resolution_clock::now ();
+    std::cout << "[ReadStepFileGLTF] dynamic_pointer_cast<ImporterStep> took: "
+        << std::chrono::duration_cast<std::chrono::microseconds>(cast_end_time - cast_start_time).count ()
+        << "us" << std::endl;
+
     if (!importerStep) {
         resultObj.set ("success", false);
+        std::cout << "[ReadStepFileGLTF] Failed to cast ImporterPtr to ImporterStepPtr." << std::endl;
+        auto func_total_end_time_cast_failure = std::chrono::high_resolution_clock::now ();
+        std::cout << "[ReadStepFileGLTF] Total execution time (cast failure): "
+            << std::chrono::duration_cast<std::chrono::milliseconds>(func_total_end_time_cast_failure - func_total_start_time).count ()
+            << "ms" << std::endl;
         return resultObj;
     }
 
     // Export to GLTF
+    auto export_gltf_start_time = std::chrono::high_resolution_clock::now ();
     GltfExporter exporter (outputName, true);
     bool exportSuccess = exporter.Export (importerStep->GetDocument ());
+    auto export_gltf_end_time = std::chrono::high_resolution_clock::now ();
+    std::cout << "[ReadStepFileGLTF] GltfExporter::Export took: "
+        << std::chrono::duration_cast<std::chrono::milliseconds>(export_gltf_end_time - export_gltf_start_time).count ()
+        << "ms" << std::endl;
 
     resultObj.set ("success", exportSuccess);
     if (exportSuccess) {
@@ -269,9 +321,13 @@ emscripten::val ReadStepFileGLTF (const emscripten::val& buffer, const emscripte
         resultObj.set ("glb", outputNameBin);
     }
 
+    auto func_total_end_time_success = std::chrono::high_resolution_clock::now ();
+    std::cout << "[ReadStepFileGLTF] Execution finished. Total time: "
+        << std::chrono::duration_cast<std::chrono::milliseconds>(func_total_end_time_success - func_total_start_time).count ()
+        << "ms" << std::endl;
+
     return resultObj;
 }
-
 
 emscripten::val ReadIgesFile (const emscripten::val& buffer, const emscripten::val& params)
 {
